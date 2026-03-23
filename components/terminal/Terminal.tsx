@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { useGameStore } from "@/lib/game/state/game-store";
+import { useI18n } from "@/lib/i18n/provider";
 
 export default function Terminal() {
   const [input, setInput] = useState("");
@@ -9,6 +10,7 @@ export default function Terminal() {
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
+  const { t } = useI18n();
 
   const stageState = useGameStore((s) => s.stageState);
   const executeCommand = useGameStore((s) => s.executeCommand);
@@ -66,17 +68,15 @@ export default function Terminal() {
       className="flex flex-col h-full bg-gray-950 border border-green-900/50 rounded-lg overflow-hidden font-mono"
       onClick={() => inputRef.current?.focus()}
     >
-      {/* Terminal header */}
       <div className="flex items-center gap-2 px-4 py-2 bg-gray-900/80 border-b border-green-900/30">
         <div className="w-3 h-3 rounded-full bg-red-500/80" />
         <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
         <div className="w-3 h-3 rounded-full bg-green-500/80" />
         <span className="ml-2 text-green-500/70 text-xs">
-          fortress-terminal — {stageState.currentPath}
+          {t.terminalPath} — {stageState.currentPath}
         </span>
       </div>
 
-      {/* Output area */}
       <div
         ref={outputRef}
         className="flex-1 overflow-y-auto p-4 space-y-1 text-sm"
@@ -88,7 +88,6 @@ export default function Terminal() {
         ))}
       </div>
 
-      {/* Input area */}
       <div className="flex items-center gap-2 px-4 py-3 bg-gray-900/50 border-t border-green-900/30">
         <span className="text-green-400 text-sm shrink-0">$</span>
         <input
@@ -99,9 +98,7 @@ export default function Terminal() {
           onKeyDown={handleKeyDown}
           className="flex-1 bg-transparent text-green-300 text-sm outline-none placeholder-green-800 caret-green-400"
           placeholder={
-            stageState.completed
-              ? "Stage complete!"
-              : "Type a command..."
+            stageState.completed ? t.stageCompleteInput : t.typeCommand
           }
           disabled={stageState.completed}
           autoComplete="off"

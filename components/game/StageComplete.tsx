@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/game/state/game-store";
+import { useI18n } from "@/lib/i18n/provider";
 import { StageResult } from "@/types";
 import { useState, useEffect } from "react";
 
@@ -10,6 +11,7 @@ export default function StageComplete() {
   const stageState = useGameStore((s) => s.stageState);
   const completeStage = useGameStore((s) => s.completeStage);
   const [result, setResult] = useState<StageResult | null>(null);
+  const { t } = useI18n();
 
   useEffect(() => {
     if (stageState?.completed && !result) {
@@ -32,21 +34,21 @@ export default function StageComplete() {
         <div className="text-center mb-6">
           <div className="text-4xl mb-2">🎉</div>
           <h2 className="text-2xl font-bold text-green-400 font-mono">
-            STAGE CLEAR
+            {t.stageClear}
           </h2>
           <p className="text-gray-400 text-sm mt-1">
-            Mission accomplished, operator.
+            {t.missionAccomplished}
           </p>
         </div>
 
         <div className="space-y-3 mb-6">
-          <StatRow label="Time" value={formatTime(result.timeSeconds)} />
-          <StatRow label="Commands Used" value={String(result.commandsUsed)} />
-          <StatRow label="Hints Used" value={String(result.hintsUsed)} />
+          <StatRow label={t.time} value={formatTime(result.timeSeconds)} />
+          <StatRow label={t.cmdsUsed} value={String(result.commandsUsed)} />
+          <StatRow label={t.hintsUsed} value={String(result.hintsUsed)} />
           {result.newCommandsLearned.length > 0 && (
             <div>
               <div className="text-gray-500 text-xs font-mono mb-1">
-                NEW COMMANDS LEARNED
+                {t.newCommandsLearned}
               </div>
               <div className="flex flex-wrap gap-1">
                 {result.newCommandsLearned.map((cmd) => (
@@ -67,7 +69,7 @@ export default function StageComplete() {
             onClick={() => router.push("/")}
             className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-sm rounded-lg transition-colors"
           >
-            Stage Select
+            {t.stageSelectButton}
           </button>
           <button
             onClick={() => {
@@ -80,7 +82,7 @@ export default function StageComplete() {
             }}
             className="flex-1 py-3 bg-green-800 hover:bg-green-700 text-green-100 font-mono text-sm rounded-lg transition-colors"
           >
-            {getNextStageId(result.stageId) ? "Next Stage →" : "Back to Menu"}
+            {getNextStageId(result.stageId) ? t.nextStage : t.backToMenu}
           </button>
         </div>
       </div>

@@ -1,19 +1,20 @@
 "use client";
 
 import { useGameStore } from "@/lib/game/state/game-store";
+import { useI18n } from "@/lib/i18n/provider";
 
 export default function MissionPanel() {
   const stageState = useGameStore((s) => s.stageState);
   const useHint = useGameStore((s) => s.useHint);
   const resetStage = useGameStore((s) => s.resetStage);
+  const { t } = useI18n();
 
   if (!stageState) return null;
 
   return (
     <div className="flex flex-col gap-3 h-full">
-      {/* Objectives */}
       <div className="bg-gray-900/80 border border-amber-900/40 rounded-lg p-4">
-        <div className="text-amber-400 text-xs font-mono mb-2">OBJECTIVES</div>
+        <div className="text-amber-400 text-xs font-mono mb-2">{t.objectives}</div>
         <div className="space-y-2">
           {stageState.objectives.map((obj) => (
             <div key={obj.id} className="flex items-start gap-2">
@@ -32,9 +33,8 @@ export default function MissionPanel() {
         </div>
       </div>
 
-      {/* Learned Commands */}
       <div className="bg-gray-900/80 border border-purple-900/40 rounded-lg p-4">
-        <div className="text-purple-400 text-xs font-mono mb-2">COMMANDS USED</div>
+        <div className="text-purple-400 text-xs font-mono mb-2">{t.commandsUsed}</div>
         <div className="flex flex-wrap gap-1">
           {[...new Set(stageState.commandsUsed)].map((cmd) => (
             <span
@@ -46,25 +46,24 @@ export default function MissionPanel() {
           ))}
           {stageState.commandsUsed.length === 0 && (
             <span className="text-gray-600 text-xs italic">
-              No commands used yet
+              {t.noCommandsYet}
             </span>
           )}
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex gap-2 mt-auto">
         <button
           onClick={() => useHint()}
           className="flex-1 px-3 py-2 bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 text-xs font-mono rounded border border-amber-800/40 transition-colors"
         >
-          💡 Hint ({stageState.hintsUsed})
+          💡 {t.hint} ({stageState.hintsUsed})
         </button>
         <button
           onClick={resetStage}
           className="flex-1 px-3 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 text-xs font-mono rounded border border-red-800/40 transition-colors"
         >
-          🔄 Reset
+          🔄 {t.reset}
         </button>
       </div>
     </div>

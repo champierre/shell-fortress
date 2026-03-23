@@ -6,23 +6,23 @@ import {
   StageState,
   StageResult,
   TerminalLine,
-  VFSDirectory,
   SideEffect,
+  VFSNode,
+  isFile,
   isDirectory,
 } from "@/types";
 import { executeInput } from "@/lib/shell/executor";
 import { getStageDefinition } from "@/lib/game/stages";
 import { getNodeAtPath, getParentAndName } from "@/lib/shell/commands/filesystem-utils";
+import { Locale, getUI, getStageTranslation } from "@/lib/i18n";
 
 interface GameStore {
-  // Progress
   progress: GameProgress;
-
-  // Current stage state
   stageState: StageState | null;
+  locale: Locale;
 
-  // Actions
-  loadStage: (stageId: string) => void;
+  setLocale: (locale: Locale) => void;
+  loadStage: (stageId: string, locale?: Locale) => void;
   executeCommand: (input: string) => void;
   useHint: () => string | null;
   resetStage: () => void;
@@ -44,9 +44,29 @@ function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
 
+// Apply locale-specific file contents to a virtual filesystem
+function applyLocalizedFileContents(
+  node: VFSNode,
+  fileContents: Record<string, string>
+): void {
+  if (isFile(node) && fileContents[node.name] !== undefined) {
+    node.content = fileContents[node.name];
+  }
+  if (isDirectory(node)) {
+    for (const child of Object.values(node.children)) {
+      applyLocalizedFileContents(child, fileContents);
+    }
+  }
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
   progress: { ...defaultProgress },
   stageState: null,
+  locale: "en",
+
+  setLocale: (locale: Locale) => {
+    set({ locale });
+  },
 
   loadProgress: () => {
     if (typeof window === "undefined") return;
@@ -67,34 +87,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
     localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
   },
 
-  loadStage: (stageId: string) => {
+  loadStage: (stageId: string, locale?: Locale) => {
     const definition = getStageDefinition(stageId);
     if (!definition) return;
 
+    const currentLocale = locale || get().locale;
+    const t = getUI(currentLocale);
+    const stageT = getStageTranslation(currentLocale, stageId);
+
+    // Use translated stage data if available, otherwise fall back to definition
+    const stageName = stageT?.name || definition.name;
+    const missionBriefing = stageT?.missionBriefing || definition.missionBriefing;
+    const objectives = stageT?.objectives || definition.objectives;
+    const hints = stageT?.hints || definition.hints;
+
+    // Clone filesystem and apply localized file contents
+    const fs = deepClone(definition.initialFileSystem);
+    if (stageT?.fileContents) {
+      applyLocalizedFileContents(fs, stageT.fileContents);
+    }
+
     const stageState: StageState = {
       stageId,
-      fileSystem: deepClone(definition.initialFileSystem),
+      fileSystem: fs,
       currentPath: "/",
       processes: deepClone(definition.initialProcesses || []),
       terminalHistory: [
-        {
-          type: "system",
-          text: `=== ${definition.name} ===`,
-        },
-        {
-          type: "system",
-          text: definition.missionBriefing,
-        },
-        {
-          type: "system",
-          text: `Available commands: ${definition.commands.join(", ")}`,
-        },
-        {
-          type: "system",
-          text: 'Type "help" for assistance.',
-        },
+        { type: "system", text: `=== ${stageName} ===` },
+        { type: "system", text: missionBriefing },
+        { type: "system", text: `${t.availableCommands}: ${definition.commands.join(", ")}` },
+        { type: "system", text: t.typeHelp },
       ],
-      objectives: deepClone(definition.objectives),
+      objectives: deepClone(objectives).map((o) => ({ ...o, completed: false })),
       doors: {},
       systems: {},
       hintsUsed: 0,
@@ -104,12 +128,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       startTime: Date.now(),
     };
 
-    set({ stageState });
+    set({ stageState, locale: currentLocale });
   },
 
   executeCommand: (input: string) => {
-    const { stageState, progress } = get();
+    const { stageState, progress, locale } = get();
     if (!stageState || stageState.completed) return;
+
+    const t = getUI(locale);
 
     const newHistory: TerminalLine[] = [
       ...stageState.terminalHistory,
@@ -120,18 +146,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     let updatedState = { ...stageState, terminalHistory: newHistory };
 
-    // Handle clear command
     if (result.output === "__CLEAR__") {
-      set({
-        stageState: {
-          ...updatedState,
-          terminalHistory: [],
-        },
-      });
+      set({ stageState: { ...updatedState, terminalHistory: [] } });
       return;
     }
 
-    // Add output to terminal
     if (result.output) {
       updatedState.terminalHistory = [
         ...updatedState.terminalHistory,
@@ -146,29 +165,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ];
     }
 
-    // Track command usage
     const cmdName = input.trim().split(/\s+/)[0];
     updatedState.commandsUsed = [...updatedState.commandsUsed, cmdName];
 
-    // Process side effects
     if (result.sideEffects) {
       updatedState = applySideEffects(updatedState, result.sideEffects);
     }
 
-    // Check stage completion
     const definition = getStageDefinition(stageState.stageId);
     if (definition && definition.checkCompletion(updatedState)) {
       updatedState.completed = true;
       updatedState.terminalHistory = [
         ...updatedState.terminalHistory,
-        {
-          type: "system" as const,
-          text: "🎉 STAGE COMPLETE! All objectives achieved.",
-        },
+        { type: "system" as const, text: `🎉 ${t.stageComplete}` },
       ];
     }
 
-    // Update learned commands
     const newLearnedCommands = [...new Set([...progress.learnedCommands, cmdName])];
 
     set({
@@ -182,16 +194,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   useHint: () => {
-    const { stageState } = get();
+    const { stageState, locale } = get();
     if (!stageState) return null;
 
+    const stageT = getStageTranslation(locale, stageState.stageId);
     const definition = getStageDefinition(stageState.stageId);
     if (!definition) return null;
 
+    const hints = stageT?.hints || definition.hints;
     const hintIndex = stageState.hintsUsed;
-    if (hintIndex >= definition.hints.length) return null;
+    if (hintIndex >= hints.length) return null;
 
-    const hint = definition.hints[hintIndex];
+    const t = getUI(locale);
+    const hint = hints[hintIndex];
 
     set({
       stageState: {
@@ -199,7 +214,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         hintsUsed: hintIndex + 1,
         terminalHistory: [
           ...stageState.terminalHistory,
-          { type: "system" as const, text: `💡 Hint: ${hint}` },
+          { type: "system" as const, text: `💡 ${t.hint}: ${hint}` },
         ],
       },
     });
@@ -208,9 +223,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   resetStage: () => {
-    const { stageState } = get();
+    const { stageState, locale } = get();
     if (!stageState) return;
-    get().loadStage(stageState.stageId);
+    get().loadStage(stageState.stageId, locale);
   },
 
   completeStage: () => {
@@ -231,7 +246,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ),
     };
 
-    // Unlock next stage
     const stageIds = ["stage-1", "stage-2", "stage-3", "stage-4"];
     const currentIndex = stageIds.indexOf(stageState.stageId);
     const nextStageId = stageIds[currentIndex + 1];
@@ -249,7 +263,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     set({ progress: newProgress });
 
-    // Save
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newProgress));
     }
@@ -265,7 +278,6 @@ function applySideEffects(state: StageState, effects: SideEffect[]): StageState 
     switch (effect.type) {
       case "changeDirectory": {
         s = { ...s, currentPath: effect.path };
-        // Check if entering a new directory opens a door
         const doorId = `door-${effect.path}`;
         s = { ...s, doors: { ...s.doors, [doorId]: true } };
         break;
@@ -277,10 +289,7 @@ function applySideEffects(state: StageState, effects: SideEffect[]): StageState 
         s = { ...s, systems: { ...s.systems, [effect.systemId]: true } };
         break;
       case "killProcess":
-        s = {
-          ...s,
-          processes: s.processes.filter((p) => p.pid !== effect.pid),
-        };
+        s = { ...s, processes: s.processes.filter((p) => p.pid !== effect.pid) };
         break;
       case "stageComplete":
         s = { ...s, completed: true };
@@ -357,8 +366,4 @@ function applySideEffects(state: StageState, effects: SideEffect[]): StageState 
   }
 
   return s;
-}
-
-function deepCloneFS<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
 }
