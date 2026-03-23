@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { useGameStore } from "@/lib/game/state/game-store";
 import { useI18n } from "@/lib/i18n/provider";
+import { tabComplete } from "@/lib/shell/completer";
 
 export default function Terminal() {
   const [input, setInput] = useState("");
@@ -33,8 +34,29 @@ export default function Terminal() {
     setInput("");
   };
 
+  const handleTab = () => {
+    if (!stageState || !input) return;
+    const result = tabComplete(input, stageState);
+    setInput(result.completed);
+    if (result.candidates.length > 1) {
+      // Show candidates in terminal output
+      useGameStore.setState({
+        stageState: {
+          ...stageState,
+          terminalHistory: [
+            ...stageState.terminalHistory,
+            { type: "output" as const, text: result.candidates.join("  ") },
+          ],
+        },
+      });
+    }
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      handleTab();
+    } else if (e.key === "Enter") {
       handleSubmit();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
